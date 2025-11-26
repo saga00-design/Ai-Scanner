@@ -1,0 +1,7 @@
+{
+  "name": "AI Scanner",
+  "description": "AI-powered liquor bottle analyzer that identifies brands, specifications, barcodes, and estimates liquid levels from photos.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
