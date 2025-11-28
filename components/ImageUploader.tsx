@@ -7,6 +7,7 @@ interface ImageUploaderProps {
   allowMultiple?: boolean;
   maxFiles?: number;
   onlyCamera?: boolean;
+  withUploadOption?: boolean;
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({ 
@@ -14,7 +15,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   onMultipleImagesSelected, 
   allowMultiple = false,
   maxFiles = 10,
-  onlyCamera = false
+  onlyCamera = false,
+  withUploadOption = false
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +85,14 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
+  const triggerUpload = () => {
+    if (fileInputRef.current) {
+      const input = fileInputRef.current;
+      input.removeAttribute("capture");
+      input.click();
+    }
+  };
+
   if (onlyCamera) {
     return (
       <div className="w-full max-w-md mx-auto">
@@ -116,11 +126,24 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
             onChange={handleFileChange}
           />
         </button>
+        
         {error && (
           <div className="mt-4 p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-center gap-2 text-red-400 text-xs font-medium">
             <AlertCircle className="w-3.5 h-3.5" />
             {error}
           </div>
+        )}
+
+        {withUploadOption && (
+             <div className="mt-8 flex justify-center">
+                <button 
+                    onClick={triggerUpload}
+                    className="flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 px-4 py-2 rounded-full transition-all border border-transparent hover:border-slate-700"
+                >
+                    <Upload className="w-4 h-4" />
+                    Upload from Gallery
+                </button>
+            </div>
         )}
       </div>
     );

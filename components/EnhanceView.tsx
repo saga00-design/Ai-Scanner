@@ -5,7 +5,7 @@ import {
   ZoomIn, Zap, Flower, Layers, Columns, BookOpen, Grid, Moon, Utensils, 
   Heart, Activity, Snowflake, Sun, Palmtree, User, Fish, Users, Smartphone, 
   Play, Waves, Crown, Sprout, UtensilsCrossed, Gem, FileText, Leaf, 
-  Instagram, Cake, CloudFog, Camera, FolderDown
+  Instagram, CloudFog, FolderDown
 } from 'lucide-react';
 import ImageUploader from './ImageUploader';
 import { enhanceImageStyle, analyzeBottleImage } from '../services/geminiService';
@@ -340,17 +340,6 @@ const STYLES = [
     prompt: 'Edit this photo of [SUBJECT] for Instagram. Boost vibrance and saturation slightly, add clarity and structure, and create a balanced color tone with warm highlights and soft shadows. Keep colors rich but true to life. Add a clean, modern aesthetic.'
   },
   {
-    id: 'bakery_style',
-    auto: false,
-    icon: Cake,
-    label: 'Bakery Style',
-    color: 'text-pink-200',
-    bg: 'bg-pink-300/10',
-    border: 'border-pink-300/30',
-    description: 'Pastel & Airy',
-    prompt: 'Make the photo of [SUBJECT] bright, airy, and sweet-looking. Boost whites and pastels, soften shadows, and enhance texture and glaze. Add a subtle glow and make the background light and minimalistic.'
-  },
-  {
     id: 'dark_moody_gen',
     auto: false,
     icon: CloudFog,
@@ -530,12 +519,13 @@ const EnhanceView: React.FC = () => {
                 AI Magic Studio
              </h2>
              <p className="text-slate-400 text-sm max-w-[260px] mx-auto">
-               Take a photo. We'll detect the subject and generate professional styles instantly.
+               Take a photo or upload. We'll detect the subject and generate professional styles instantly.
              </p>
           </div>
           <ImageUploader 
              onImageSelected={handleCapture} 
              onlyCamera={true}
+             withUploadOption={true}
           />
         </div>
       )}
@@ -605,6 +595,7 @@ const EnhanceView: React.FC = () => {
                 const isCompleted = variation.status === 'completed' && variation.imageUrl;
                 const isIdle = variation.status === 'idle';
                 const isProcessing = variation.status === 'processing' || variation.status === 'pending';
+                const isError = variation.status === 'error';
                 
                 return (
                    <div 
@@ -663,7 +654,16 @@ const EnhanceView: React.FC = () => {
                                      <span className="text-[10px] font-bold text-slate-400">Tap to Generate</span>
                                    </div>
                                 ) : (
-                                   <span className="text-[10px] text-red-400">Generation Failed</span>
+                                   <div className="flex flex-col items-center gap-2 animate-[fadeIn_0.3s_ease-out]">
+                                      <span className="text-[10px] text-red-400 font-medium">Generation Failed</span>
+                                      <button 
+                                         onClick={(e) => { e.stopPropagation(); handleManualGenerate(variation.styleId); }}
+                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-[10px] font-bold text-red-300 transition-colors"
+                                      >
+                                         <RefreshCcw className="w-3 h-3" />
+                                         Retry
+                                      </button>
+                                   </div>
                                 )}
                              </div>
                           )}
