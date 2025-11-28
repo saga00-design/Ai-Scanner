@@ -1,7 +1,8 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ScanResult } from "../types";
 
+// Access API key via process.env.API_KEY as per guidelines.
+// Assume process.env.API_KEY is pre-configured and valid.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Define the schema for strict JSON output
@@ -83,9 +84,57 @@ const bottleAnalysisSchema: Schema = {
   required: ["productName", "description", "averagePrice", "specs", "tastingNotes", "cocktails", "liquidAnalysis"],
 };
 
+// --- Helper to resize image to avoid payload size limits ---
+const resizeImage = (base64Str: string, maxWidth = 800): Promise<string> => {
+  return new Promise((resolve) => {
+    // If not running in browser environment (SSR), return as is
+    if (typeof Image === 'undefined' || typeof document === 'undefined') {
+      resolve(base64Str);
+      return;
+    }
+
+    const img = new Image();
+    img.src = `data:image/jpeg;base64,${base64Str}`;
+    
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      
+      // Calculate new dimensions keeping aspect ratio
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          // Compress to JPEG 0.85 quality
+          const newDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          resolve(newDataUrl.split(',')[1]);
+      } else {
+          // Fallback if context fails
+          resolve(base64Str);
+      }
+    };
+    
+    img.onerror = () => {
+      // Fallback if loading fails
+      resolve(base64Str);
+    };
+  });
+};
+
 export const analyzeBottleImage = async (base64Image: string): Promise<ScanResult> => {
   try {
-    const model = "gemini-2.5-flash"; // Using Flash for fast multimodal analysis
+    const model = "gemini-2.5-flash"; 
+    
+    // Resize for analysis (max 1024px is plenty for text/barcode reading)
+    const optimizedImage = await resizeImage(base64Image, 1024);
 
     const prompt = `
       Analyze this image. It is either a Spirit Bottle, a specific Barcode, or a General Product.
@@ -109,7 +158,7 @@ export const analyzeBottleImage = async (base64Image: string): Promise<ScanResul
       model: model,
       contents: {
         parts: [
-          { inlineData: { mimeType: "image/jpeg", data: base64Image } },
+          { inlineData: { mimeType: "image/jpeg", data: optimizedImage } },
           { text: prompt },
         ],
       },
@@ -134,6 +183,10 @@ export const analyzeBottleImage = async (base64Image: string): Promise<ScanResul
 
 export const enhanceImageStyle = async (base64Image: string, stylePrompt: string): Promise<string> => {
   try {
+    // Resize for generation - strictly required to avoid 500 errors on large inputs
+    // 768px or 800px is the sweet spot for these models
+    const optimizedImage = await resizeImage(base64Image, 800);
+    
     // Using gemini-2.5-flash-image for image generation/editing
     const model = "gemini-2.5-flash-image";
 
@@ -144,7 +197,7 @@ export const enhanceImageStyle = async (base64Image: string, stylePrompt: string
           {
             inlineData: {
               mimeType: 'image/jpeg',
-              data: base64Image,
+              data: optimizedImage,
             },
           },
           {
@@ -155,10 +208,12 @@ export const enhanceImageStyle = async (base64Image: string, stylePrompt: string
     });
 
     // Extract image from response parts
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return part.inlineData.data;
-      }
+    if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return part.inlineData.data;
+            }
+        }
     }
     
     throw new Error("No image data found in response");
