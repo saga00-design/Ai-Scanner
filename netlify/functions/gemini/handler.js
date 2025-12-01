@@ -1,19 +1,46 @@
+// /netlify/functions/gemini/handler.ts
+import type { Handler } from "@netlify/functions";
 import { GoogleGenerativeAI } from "@google/genai";
 
-const client = new GoogleGenerativeAI(process.env.API_KEY);
+const client = new GoogleGenerativeAI(process.env.API_KEY!);
 
-export default async function handler(event, context) {
+export const handler: Handler = async (event) => {
   try {
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        body: "Missing request body",
+      };
+    }
+
     const { prompt } = JSON.parse(event.body);
 
-    const model = client.getGenerativeModel({ model: "gemini-1.5-flash" });
+    if (!prompt) {
+      return {
+        statusCode: 400,
+        body: "Missing 'prompt'",
+      };
+    }
+
+    const model = client.getGenerativeModel({
+      model: "gemini-1.5-flash",
+    });
+
     const result = await model.generateContent(prompt);
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ result: result.response.text() }),
+      body: JSON.stringify({
+        output: result.response.text(),
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
     };
-  } catch (e) {
-    return { statusCode: 500, body: e.message };
+  } catch (err: any) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: err.message }),
+    };
   }
-}
+};
