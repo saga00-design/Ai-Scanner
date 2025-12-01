@@ -1,7 +1,17 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ScanResult } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization to allow for better error handling if key is missing
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey || apiKey === 'undefined') {
+    console.error("CRITICAL: API Key is missing. Please check your Netlify/Vercel Environment Variables.");
+    throw new Error("API Key is missing. If you are the developer, ensure 'API_KEY' is set in your build settings and redeploy.");
+  }
+  
+  return new GoogleGenAI({ apiKey });
+};
 
 // Define the schema for strict JSON output
 const bottleAnalysisSchema: Schema = {
@@ -130,6 +140,7 @@ export const resizeImage = (base64Str: string, maxWidth = 800): Promise<string> 
 
 export const analyzeBottleImage = async (base64Image: string): Promise<ScanResult> => {
   try {
+    const ai = getAiClient();
     const model = "gemini-2.5-flash"; 
     
     // Resize for analysis (max 1024px is plenty for text/barcode reading)
@@ -182,6 +193,7 @@ export const analyzeBottleImage = async (base64Image: string): Promise<ScanResul
 
 export const enhanceImageStyle = async (base64Image: string, stylePrompt: string): Promise<string> => {
   try {
+    const ai = getAiClient();
     // Resize for generation - strictly required to avoid 500 errors on large inputs
     // 768px or 800px is the sweet spot for these models
     const optimizedImage = await resizeImage(base64Image, 800);
