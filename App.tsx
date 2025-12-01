@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Wine, AlertCircle, ScanLine, Database, CheckCircle2, Wand2, Copy, Check, RefreshCcw } from 'lucide-react';
+import { Loader2, Camera, AlertCircle, ScanLine, Database, CheckCircle2, Wand2, Copy, Check, RefreshCcw } from 'lucide-react';
 import ImageUploader from './components/ImageUploader';
 import ScanResults from './components/ScanResults';
 import StockTake from './components/StockTake';
@@ -227,7 +227,7 @@ create policy "Enable access for all users" on stock_items for all using (true) 
     switch(viewMode) {
       case 'stock': return 'Daily Inventory Mode';
       case 'enhance': return 'AI Photo Enhancement';
-      default: return 'AI Product & Barcode Analysis';
+      default: return 'Instant AI Food & Drink Analysis';
     }
   };
 
@@ -235,7 +235,7 @@ create policy "Enable access for all users" on stock_items for all using (true) 
     switch(viewMode) {
       case 'stock': return <Database className="w-6 h-6 text-emerald-500" />;
       case 'enhance': return <Wand2 className="w-6 h-6 text-purple-500" />;
-      default: return <Wine className="w-6 h-6 text-amber-500" />;
+      default: return <Camera className="w-6 h-6 text-blue-500" />;
     }
   };
 
@@ -243,7 +243,7 @@ create policy "Enable access for all users" on stock_items for all using (true) 
     switch(viewMode) {
       case 'stock': return 'bg-emerald-500/10 border-emerald-500/20';
       case 'enhance': return 'bg-purple-500/10 border-purple-500/20';
-      default: return 'bg-amber-500/10 border-amber-500/20';
+      default: return 'bg-blue-500/10 border-blue-500/20';
     }
   };
 
@@ -257,7 +257,7 @@ create policy "Enable access for all users" on stock_items for all using (true) 
              {getIcon()}
            </div>
            <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">AI Scanner</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight">AI Food Photo</h1>
               <p className="text-slate-400 text-xs">
                 {getTitle()}
               </p>
