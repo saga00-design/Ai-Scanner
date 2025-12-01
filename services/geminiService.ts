@@ -1,8 +1,6 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ScanResult } from "../types";
 
-// Access API key via process.env.API_KEY as per guidelines.
-// Assume process.env.API_KEY is pre-configured and valid.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Define the schema for strict JSON output
@@ -85,7 +83,8 @@ const bottleAnalysisSchema: Schema = {
 };
 
 // --- Helper to resize image to avoid payload size limits ---
-const resizeImage = (base64Str: string, maxWidth = 800): Promise<string> => {
+// Exported for use in App.tsx for thumbnail generation
+export const resizeImage = (base64Str: string, maxWidth = 800): Promise<string> => {
   return new Promise((resolve) => {
     // If not running in browser environment (SSR), return as is
     if (typeof Image === 'undefined' || typeof document === 'undefined') {
@@ -142,7 +141,7 @@ export const analyzeBottleImage = async (base64Image: string): Promise<ScanResul
       1. **Identify**: Read the Barcode if visible. Identify Product Name, Type, Weight/Volume, Origin.
       2. **Analyze Content (High Precision)**: Look closely at the transparency and bottle geometry to estimate the remaining % (0-100). 
          - Be precise (e.g. 98% if near full, 45% if half). 
-         - If it is a solid object or opaque container, estimate 100% unless clearly used/opened.
+         - If it is a solid object or opaque container, estimate 100% unless clearly used.
       3. **Knowledge Retrieval**: 
          - Provide a short, engaging "Story" about the brand.
          - Estimate the "Average Price" in GBP (£).

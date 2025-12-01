@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Loader2, Wine, AlertCircle, ScanLine, Database, CheckCircle2, Layers, Wand2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2, Wine, AlertCircle, ScanLine, Database, CheckCircle2, Wand2, Copy, Check, RefreshCcw } from 'lucide-react';
 import ImageUploader from './components/ImageUploader';
 import ScanResults from './components/ScanResults';
 import StockTake from './components/StockTake';
 import EnhanceView from './components/EnhanceView';
-import { analyzeBottleImage } from './services/geminiService';
+import { analyzeBottleImage, resizeImage } from './services/geminiService';
+import { stockService } from './services/supabase';
 import { ImageState, ScanResult, ViewMode, StockItem } from './types';
 
 const App: React.FC = () => {
@@ -24,6 +25,49 @@ const App: React.FC = () => {
   // Stock Take State
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [lastAddedItem, setLastAddedItem] = useState<string | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [sqlCopied, setSqlCopied] = useState(false);
+
+  // Load stock items on mount
+  useEffect(() => {
+    loadStockData();
+  }, []);
+
+  const loadStockData = async () => {
+    try {
+      setDbError(null);
+      const items = await stockService.getAllItems();
+      setStockItems(items);
+    } catch (err: any) {
+      console.error("Failed to load stock:", err);
+      // Detect missing table error
+      if (err.message && (err.message.includes('Could not find the table') || err.message.includes('relation "public.stock_items" does not exist'))) {
+          setDbError("Table 'stock_items' not found. Please run the SQL setup.");
+      } else {
+          setDbError("Failed to connect to database. Click retry to connect.");
+      }
+    }
+  };
+
+  const handleCopySql = () => {
+    const sql = `create table if not exists stock_items (
+  id uuid default gen_random_uuid() primary key,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  product_name text not null,
+  volume text,
+  percentage integer,
+  barcode text,
+  quantity integer default 1,
+  cost numeric,
+  image text
+);
+alter table stock_items enable row level security;
+create policy "Enable access for all users" on stock_items for all using (true) with check (true);`;
+    
+    navigator.clipboard.writeText(sql);
+    setSqlCopied(true);
+    setTimeout(() => setSqlCopied(false), 2000);
+  };
 
   const handleMultipleImagesSelected = async (images: Array<{ file: File; previewUrl: string; base64: string }>) => {
     setIsLoading(true);
@@ -49,25 +93,29 @@ const App: React.FC = () => {
               ? priceMatches.reduce((a, b) => a + b, 0) / priceMatches.length 
               : 0;
 
-            const newItem: StockItem = {
-              id: Date.now().toString() + Math.random().toString(), // Ensure unique ID in loop
+            // Resize image for thumbnail storage (save DB space)
+            const thumbnailBase64 = await resizeImage(img.base64, 200);
+            const thumbnailUrl = `data:image/jpeg;base64,${thumbnailBase64}`;
+
+            // Add to Supabase
+            await stockService.addItem({
               productName: analysis.productName,
               volume: analysis.specs.volume,
               percentage: analysis.liquidAnalysis.percentage,
-              timestamp: Date.now(),
               barcode: analysis.barcode,
-              image: img.previewUrl,
+              image: thumbnailUrl,
               quantity: 1,
-              cost: Math.round(estimatedCost * 100) / 100 
-            };
+              cost: Math.round(estimatedCost * 100) / 100
+            });
             
-            setStockItems(prev => [newItem, ...prev]);
             addedCount++;
         } catch (err) {
             console.error("Error analyzing image index " + i, err);
-            // Optionally accumulate errors to show at the end
         }
     }
+
+    // Reload list to get IDs and fresh data
+    await loadStockData();
 
     setIsLoading(false);
     setBulkProgress(null);
@@ -97,20 +145,24 @@ const App: React.FC = () => {
           ? priceMatches.reduce((a, b) => a + b, 0) / priceMatches.length 
           : 0;
 
-        // Add to stock list instead of showing result
-        const newItem: StockItem = {
-          id: Date.now().toString(),
+        // Resize image for thumbnail storage
+        const thumbnailBase64 = await resizeImage(base64, 200);
+        const thumbnailUrl = `data:image/jpeg;base64,${thumbnailBase64}`;
+
+        // Add to Supabase
+        await stockService.addItem({
           productName: analysis.productName,
           volume: analysis.specs.volume,
           percentage: analysis.liquidAnalysis.percentage,
-          timestamp: Date.now(),
           barcode: analysis.barcode,
-          image: previewUrl,
+          image: thumbnailUrl,
           quantity: 1,
-          cost: Math.round(estimatedCost * 100) / 100 // Round to 2 decimals
-        };
-        setStockItems(prev => [newItem, ...prev]);
+          cost: Math.round(estimatedCost * 100) / 100 
+        });
+
+        await loadStockData();
         setLastAddedItem(analysis.productName);
+        
         // Reset image state after short delay to allow next scan
         setTimeout(() => {
            handleReset();
@@ -127,10 +179,41 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateStockItem = (id: string, updates: Partial<StockItem>) => {
+  const handleUpdateStockItem = async (id: string, updates: Partial<StockItem>) => {
+    // Optimistic UI update
     setStockItems(prev => prev.map(item => 
       item.id === id ? { ...item, ...updates } : item
     ));
+
+    try {
+      await stockService.updateItem(id, updates);
+    } catch (err) {
+      console.error("Failed to update item in DB", err);
+      // Revert if needed (omitted for simplicity, ideally reload data)
+      loadStockData();
+    }
+  };
+
+  const handleDeleteStockItem = async (id: string) => {
+    setStockItems(prev => prev.filter(i => i.id !== id));
+    try {
+      await stockService.deleteItem(id);
+    } catch (err) {
+      console.error("Failed to delete item", err);
+      loadStockData();
+    }
+  };
+
+  const handleClearAllStock = async () => {
+    if (confirm("Are you sure you want to clear the entire inventory list?")) {
+       setStockItems([]);
+       try {
+         await stockService.clearAll();
+       } catch (err) {
+         console.error("Failed to clear DB", err);
+         loadStockData();
+       }
+    }
   };
 
   const handleReset = () => {
@@ -185,7 +268,7 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="w-full flex-1 flex flex-col p-4 overflow-y-auto pb-28">
         
-        {/* Error State */}
+        {/* Error State (General) */}
         {error && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-200 text-sm animate-[shake_0.5s_ease-in-out]">
             <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
@@ -210,6 +293,57 @@ const App: React.FC = () => {
                 {!imageState.previewUrl && !isLoading && (
                     viewMode === 'stock' ? (
                         <div className="flex flex-col gap-6">
+                            
+                            {/* DB Setup Error Alert */}
+                            {dbError && (
+                                <div className="p-4 bg-slate-900 rounded-2xl border border-red-500/30 shadow-lg animate-[fadeIn_0.5s_ease-out]">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2 text-red-400 font-bold">
+                                            <AlertCircle className="w-5 h-5" />
+                                            <h3>Database Connection</h3>
+                                        </div>
+                                        <button 
+                                            onClick={loadStockData}
+                                            className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold rounded-lg transition-colors border border-red-500/20 flex items-center gap-1"
+                                        >
+                                            <RefreshCcw className="w-3 h-3" />
+                                            Retry
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mb-3">
+                                        {dbError}
+                                    </p>
+                                    
+                                    {/* Show SQL only if strictly missing table error */}
+                                    {dbError.includes("Table 'stock_items' not found") && (
+                                        <div className="relative mt-3">
+                                            <pre className="bg-black/50 p-3 rounded-lg text-[10px] text-slate-300 font-mono overflow-x-auto border border-slate-800">
+{`create table if not exists stock_items (
+  id uuid default gen_random_uuid() primary key,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  product_name text not null,
+  volume text,
+  percentage integer,
+  barcode text,
+  quantity integer default 1,
+  cost numeric,
+  image text
+);
+alter table stock_items enable row level security;
+create policy "Enable access for all users" on stock_items for all using (true) with check (true);`}
+                                            </pre>
+                                            <button 
+                                                onClick={handleCopySql}
+                                                className="absolute top-2 right-2 p-1.5 bg-slate-700 hover:bg-slate-600 rounded-md text-white transition-colors"
+                                                title="Copy SQL"
+                                            >
+                                                {sqlCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Mini Uploader for Stock */}
                             <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 border-dashed">
                                 <h3 className="text-center text-slate-400 text-sm mb-3 font-medium">Scan items to add to stock</h3>
@@ -223,8 +357,8 @@ const App: React.FC = () => {
                             <StockTake 
                                 items={stockItems} 
                                 onUpdateItem={handleUpdateStockItem}
-                                onClear={() => setStockItems([])} 
-                                onDeleteItem={(id) => setStockItems(prev => prev.filter(i => i.id !== id))}
+                                onClear={handleClearAllStock} 
+                                onDeleteItem={handleDeleteStockItem}
                             />
                         </div>
                     ) : (
